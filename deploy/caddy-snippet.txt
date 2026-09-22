@@ -1,0 +1,52 @@
+Lägg till dessa två "handle"-block i den BEFINTLIGA app.mobelmastarna.se-
+sektionen i /etc/caddy/Caddyfile, INNAN den avslutande catch-all
+"handle { ... }"-blocket (ordningen spelar roll - Caddy testar handle-block
+i den ordning de står, och catch-all:en måste stå sist).
+
+Ändra INGET annat i filen - varken /social-media-blocken eller
+kundtjanst.mobelmastarna.se-sektionen ska röras.
+
+Före (nuvarande):
+
+    app.mobelmastarna.se {
+        handle /social-media {
+            reverse_proxy localhost:3000
+        }
+
+        handle /social-media/* {
+            reverse_proxy localhost:3000
+        }
+
+        handle {
+            respond "Möbelmästarna App Library" 200
+        }
+    }
+
+Efter (med /feed tillagt):
+
+    app.mobelmastarna.se {
+        handle /social-media {
+            reverse_proxy localhost:3000
+        }
+
+        handle /social-media/* {
+            reverse_proxy localhost:3000
+        }
+
+        handle /feed {
+            reverse_proxy localhost:3020
+        }
+
+        handle /feed/* {
+            reverse_proxy localhost:3020
+        }
+
+        handle {
+            respond "Möbelmästarna App Library" 200
+        }
+    }
+
+Verifiera och ladda om efteråt:
+
+    sudo caddy validate --config /etc/caddy/Caddyfile
+    sudo systemctl reload caddy

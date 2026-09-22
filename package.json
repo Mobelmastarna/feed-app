@@ -1,0 +1,19 @@
+{
+  "name": "feed-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Konverterar Möbelmästarnas Google-produktfeed till OpenAI Ads-format och skickar den via SFTP.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.3.1",
+    "express": "^4.21.2",
+    "fast-xml-parser": "^5.11.1",
+    "node-cron": "^3.0.3",
+    "ssh2-sftp-client": "^12.1.1"
+  }
+}

@@ -1,0 +1,20 @@
+[Unit]
+Description=Feed App (Möbelmästarna produktfeed till OpenAI Ads)
+After=network.target
+
+[Service]
+Type=simple
+User=feedapp
+WorkingDirectory=/home/feedapp/feed-app
+EnvironmentFile=/home/feedapp/feed-app/.env
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/feedapp/feed-app
+
+[Install]
+WantedBy=multi-user.target
