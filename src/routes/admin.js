@@ -300,13 +300,21 @@ function escapeAttrJson(obj) {
   return JSON.stringify(obj).replace(/</g, "\\u003c");
 }
 
+function validateFilename(filename) {
+  if (!filename || typeof filename !== "string") return false;
+  if (filename.length > 255) return false;
+  if (filename.includes("/") || filename.includes("\\") || filename.includes("..")) return false;
+  if (filename.startsWith(".")) return false;
+  return /^[a-zA-Z0-9._-]+$/.test(filename);
+}
+
 router.post("/api/config", (req, res) => {
   const { sourceUrl, targetFilename } = req.body || {};
-  if (!sourceUrl || !/^https?:\/\//i.test(sourceUrl)) {
+  if (!sourceUrl || !/^https?:\/\//i.test(sourceUrl) || sourceUrl.length > 2048) {
     return res.status(400).json({ error: "Ange en giltig http(s)-URL." });
   }
-  if (!targetFilename || !targetFilename.trim()) {
-    return res.status(400).json({ error: "Ange ett filnamn." });
+  if (!validateFilename(targetFilename)) {
+    return res.status(400).json({ error: "Filnamnet är ogiltigt (endast a-z, 0-9, ., _, -)." });
   }
   const config = store.getConfig();
   store.saveConfig({ ...config, sourceUrl: sourceUrl.trim(), targetFilename: targetFilename.trim() });

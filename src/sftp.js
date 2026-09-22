@@ -36,7 +36,14 @@ async function uploadCsvViaSftp(csv, filename) {
     );
   }
 
-  const connectOptions = { host, port, username };
+  const connectOptions = {
+    host,
+    port,
+    username,
+    readyTimeout: 30000,
+    algorithms: { serverHostKey: ["ssh-ed25519", "ecdsa-sha2-nistp256"] },
+    strictHostKey: true,
+  };
 
   if (privateKeyPath) {
     connectOptions.privateKey = fs.readFileSync(privateKeyPath, "utf-8");
@@ -53,7 +60,6 @@ async function uploadCsvViaSftp(csv, filename) {
     try {
       await client.end();
     } catch {
-      // Anslutningen kan redan vara stängd - ofarligt.
     }
   }
 }

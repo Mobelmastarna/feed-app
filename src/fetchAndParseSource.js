@@ -57,15 +57,23 @@ function extractItems(parsed) {
 
 /** Hämtar och parsar hela källfeeden. Kan ta flera sekunder för stora feeder. */
 async function fetchFullSource(sourceUrl) {
-  const res = await fetch(sourceUrl, {
-    headers: { "User-Agent": "mobelmastarna-feed-app/1.0" },
-  });
-  if (!res.ok) {
-    throw new Error(`Kunde inte hämta källfeeden (HTTP ${res.status}).`);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+  try {
+    const res = await fetch(sourceUrl, {
+      headers: { "User-Agent": "mobelmastarna-feed-app/1.0" },
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      throw new Error(`Kunde inte hämta källfeeden (HTTP ${res.status}).`);
+    }
+    const xml = await res.text();
+    const parsed = makeParser().parse(xml);
+    return extractItems(parsed);
+  } finally {
+    clearTimeout(timeoutId);
   }
-  const xml = await res.text();
-  const parsed = makeParser().parse(xml);
-  return extractItems(parsed);
 }
 
 function uniqueFields(items) {
@@ -81,61 +89,68 @@ function uniqueFields(items) {
  * för att lista tillgängliga fältnamn utan att ladda ner hela filen.
  */
 async function discoverSourceFields(sourceUrl, sampleItems = 3) {
-  const res = await fetch(sourceUrl, {
-    headers: { "User-Agent": "mobelmastarna-feed-app/1.0" },
-  });
-  if (!res.ok) {
-    throw new Error(`Kunde inte hämta källfeeden (HTTP ${res.status}).`);
-  }
-  if (!res.body) {
-    const xml = await res.text();
-    const parsed = makeParser().parse(xml);
-    const items = extractItems(parsed).slice(0, sampleItems);
-    return { fields: uniqueFields(items), sample: items };
-  }
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder("utf-8");
-  let buffer = "";
-  let closedTagCount = 0;
-  const MAX_BYTES = 2_000_000;
-  let totalBytes = 0;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
 
   try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      totalBytes += value.byteLength;
-      buffer += decoder.decode(value, { stream: true });
-      closedTagCount = (buffer.match(/<\/item>/g) || []).length;
-      if (closedTagCount >= sampleItems || totalBytes >= MAX_BYTES) {
-        break;
+    const res = await fetch(sourceUrl, {
+      headers: { "User-Agent": "mobelmastarna-feed-app/1.0" },
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      throw new Error(`Kunde inte hämta källfeeden (HTTP ${res.status}).`);
+    }
+    if (!res.body) {
+      const xml = await res.text();
+      const parsed = makeParser().parse(xml);
+      const items = extractItems(parsed).slice(0, sampleItems);
+      return { fields: uniqueFields(items), sample: items };
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+    let closedTagCount = 0;
+    const MAX_BYTES = 2_000_000;
+    let totalBytes = 0;
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        totalBytes += value.byteLength;
+        buffer += decoder.decode(value, { stream: true });
+        closedTagCount = (buffer.match(/<\/item>/g) || []).length;
+        if (closedTagCount >= sampleItems || totalBytes >= MAX_BYTES) {
+          break;
+        }
+      }
+    } finally {
+      try {
+        await reader.cancel();
+      } catch {
       }
     }
-  } finally {
-    try {
-      await reader.cancel();
-    } catch {
-      // Anslutningen kan redan vara stängd - ofarligt.
+
+    const firstItemIdx = buffer.indexOf("<item>");
+    const lastCloseIdx = buffer.lastIndexOf("</item>");
+    if (firstItemIdx === -1 || lastCloseIdx === -1 || lastCloseIdx < firstItemIdx) {
+      throw new Error("Hittade inga produkter i källfeeden (oväntat format).");
     }
+    const fragment = buffer.slice(firstItemIdx, lastCloseIdx + "</item>".length);
+    const wrapped = `<root xmlns:g="http://base.google.com/ns/1.0">${fragment}</root>`;
+
+    const parser = makeParser();
+    const parsed = parser.parse(wrapped);
+    const root = parsed && parsed.root;
+    const rawItems = root && root.item;
+    const arr = rawItems ? (Array.isArray(rawItems) ? rawItems : [rawItems]) : [];
+    const items = arr.map((item) => flattenItem(item));
+
+    return { fields: uniqueFields(items), sample: items };
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  const firstItemIdx = buffer.indexOf("<item>");
-  const lastCloseIdx = buffer.lastIndexOf("</item>");
-  if (firstItemIdx === -1 || lastCloseIdx === -1 || lastCloseIdx < firstItemIdx) {
-    throw new Error("Hittade inga produkter i källfeeden (oväntat format).");
-  }
-  const fragment = buffer.slice(firstItemIdx, lastCloseIdx + "</item>".length);
-  const wrapped = `<root xmlns:g="http://base.google.com/ns/1.0">${fragment}</root>`;
-
-  const parser = makeParser();
-  const parsed = parser.parse(wrapped);
-  const root = parsed && parsed.root;
-  const rawItems = root && root.item;
-  const arr = rawItems ? (Array.isArray(rawItems) ? rawItems : [rawItems]) : [];
-  const items = arr.map((item) => flattenItem(item));
-
-  return { fields: uniqueFields(items), sample: items };
 }
 
 module.exports = { fetchFullSource, discoverSourceFields };
